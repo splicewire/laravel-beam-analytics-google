@@ -7,7 +7,9 @@ use Rushing\Popcorn\Contracts\ChainsTraitMethods as ChainsTraitMethodsContract;
 use Rushing\Popcorn\Registries\ScopesRegistrant;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Splicewire\Beam\AnalyticsGoogle\Concerns\WiresDoctorAudit;
 use Splicewire\Beam\AnalyticsGoogle\Concerns\WiresInstallStep;
+use Splicewire\Beam\AnalyticsGoogle\Concerns\WiresTrafficSource;
 
 /**
  * The Google Analytics child: a GA4 Data API TrafficSource for laravel-beam-analytics, install scope only.
@@ -25,7 +27,9 @@ class BeamAnalyticsGoogleServiceProvider extends PackageServiceProvider implemen
 {
     use ChainsTraitMethods;
     use ScopesRegistrant;
+    use WiresDoctorAudit;
     use WiresInstallStep;
+    use WiresTrafficSource;
 
     protected function registrant(): string
     {

@@ -7,8 +7,22 @@ Beam tier.
 ## What is here now
 
 The scaffold `pnpm package:new` writes (splicewire-ecosystem): the service provider, `config/beam/analytics-google.php`
-(merged under `beam.analytics-google.*`, no keys yet), one install step in beam's `beam.install.steps` (publishes
+(merged under `beam.analytics-google.*`), one install step in beam's `beam.install.steps` (publishes
 `beam-analytics-google-config`, order 900), and the Testbench and Pest harness.
+
+Analytics-area ticket 14 added the child itself:
+
+- **`Ga4TrafficSource`** (laravel-beam-analytics' `TrafficSource` port, key `google-analytics`): the install's GA4 property
+  through `properties/{id}:runReport`, three reports per read (totals with the daily trend, top pages, top referrers).
+  `covers()` is false for EVERY tenant scope, and it reads config only. `read()` runs only in analytics' refresh job.
+- **`Ga4/`**: two narrow Saloon connectors (`GoogleTokenConnector` for `/token`, `Ga4DataConnector` for the Data API; conduit-fda's
+  connector is the precedent), the service account's RS256 assertion (`ServiceAccountAssertion`, openssl, no Google SDK),
+  `Ga4Config` (the NUMERIC property id, never a `G-` measurement id; the key file by path), and `Ga4ReadFailed`, whose messages
+  carry a kind and a status and never a credential.
+- **`Doctor/Ga4ConfigAudit`**: advisory, in beam's doctor manifest. It warns on a misconfigured child without quoting the key.
+- **Wiring:** `WiresTrafficSource` (into `beam.analytics.sources` by `afterResolving`, by class-name string, idempotent) and
+  `WiresDoctorAudit`.
+- **Tests:** offline only. A Saloon `MockClient`, `preventStrayRequests`, a per-run generated key, provider URLs at a closed port.
 
 What an extension usually adds next follows beam's particle doctrine
 (`docs/agents/particle-doctrine.md` in splicewire/laravel-beam). The worked example of a resource, its nav
