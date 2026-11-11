@@ -82,7 +82,9 @@ it('warns on a malformed private key that only carries the PEM marker, and quote
 });
 
 it('warns on a well-formed key that is not RSA, which cannot sign RS256 (14 AMEND 1)', function () {
-    $ec = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+    // private_key_bits is set because OpenSSL 3.6 (Herd's PHP 8.4.17) refuses an EC request without it; the key is still EC.
+    $ec = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1', 'private_key_bits' => 2048]);
+    expect(openssl_pkey_get_details($ec)['type'])->toBe(OPENSSL_KEYTYPE_EC);
     openssl_pkey_export($ec, $pem);
     configureKey($pem);
 
