@@ -91,7 +91,7 @@ it('maps a runReport into the provider-neutral snapshot', function () {
     $mock->assertSent(fn ($request, $response): bool => $request instanceof RunReport
         && str_ends_with($response->getPendingRequest()->getUrl(), '/properties/'.Ga4Fixture::PROPERTY.':runReport')
         && $response->getPendingRequest()->headers()->get('Authorization') === 'Bearer '.Ga4Fixture::TOKEN
-        && $response->getPendingRequest()->body()->all()['dateRanges'] === [['startDate' => '28daysAgo', 'endDate' => 'today']]);
+        && $response->getPendingRequest()->body()->all()['dateRanges'] === [['startDate' => '27daysAgo', 'endDate' => 'today']]);
 });
 
 it('reaches 08\'s honest states through the refresh job: measured, auth failure, quota failure and an empty report', function () {
@@ -159,4 +159,44 @@ it('never puts a credential in a failure message', function () {
             expect($e->getMessage())->not->toContain($secret);
         }
     }
+});
+
+/** How many dates a Data API DateRange covers: BOTH ends inclusive (v1beta DateRange); relative dates as GA4 reads them. */
+function inclusiveDates(array $range): int
+{
+    $offset = fn (string $d): int => match (true) {
+        $d === 'today' => 0,
+        $d === 'yesterday' => 1,
+        (bool) preg_match('/^(\d+)daysAgo$/', $d, $m) => (int) $m[1],
+        default => throw new InvalidArgumentException("not a relative date: {$d}"),
+    };
+
+    return $offset($range['startDate']) - $offset($range['endDate']) + 1;
+}
+
+it('asks every report for EXACTLY the period\'s days, ending today (14 AMEND 1)', function () {
+    Ga4Fixture::configure();
+
+    foreach ([7, 28, 90] as $days) {
+        MockClient::destroyGlobal();
+        $mock = Ga4Fixture::measured();
+        ga4()->read(AnalyticsScope::install(), new AnalyticsPeriod($days));
+
+        $ranges = [];
+        foreach ($mock->getRecordedResponses() as $response) {
+            if ($response->getRequest() instanceof RunReport) {
+                $body = $response->getPendingRequest()->body()->all();
+                $ranges[$body['dimensions'][0]['name']] = $body['dateRanges'];
+            }
+        }
+
+        expect(array_keys($ranges))->toEqualCanonicalizing(['date', 'pagePath', 'sessionSource'], "{$days}: all three reports");
+        foreach ($ranges as $report => $dateRanges) {
+            expect($dateRanges)->toHaveCount(1)
+                ->and(inclusiveDates($dateRanges[0]))->toBe($days, "{$days}-day {$report} report covers {$days} inclusive dates")
+                ->and($dateRanges[0]['endDate'])->toBe('today', 'the window ends today, as the period means');
+        }
+    }
+
+    expect(Ga4TrafficSource::window(new AnalyticsPeriod(1)))->toBe(['startDate' => 'today', 'endDate' => 'today']);
 });

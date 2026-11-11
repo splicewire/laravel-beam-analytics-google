@@ -59,8 +59,10 @@ final class Ga4Config
             $problems[] = 'no service account key is set (beam.analytics-google.credentials)';
         } elseif (! is_file($path) || ! is_readable($path)) {
             $problems[] = 'the service account key file is missing or unreadable';
-        } elseif ($this->serviceAccount() === null) {
+        } elseif ($this->serviceAccountFields() === null) {
             $problems[] = 'the service account key file is not a service account JSON key (it needs client_email and private_key)';
+        } elseif ($this->serviceAccount() === null) {
+            $problems[] = 'the service account\'s private key is not a usable RSA key (it must load and sign RS256)';
         }
 
         return $problems;
@@ -73,11 +75,25 @@ final class Ga4Config
 
     /**
      * The service account's email and private key, read from the key file only to sign a token request. Null when the file is
-     * not a service account key. Never logged, never put in a message.
+     * not a service account key, or its private key is not a USABLE RSA key: it must load (`openssl_pkey_get_private`), be RSA
+     * of at least 2048 bits, and actually sign an RS256 probe. A marker-only check would pass a malformed key (14 AMEND 1).
+     * Validated locally, never by a call to Google. Never logged, never put in a message.
      *
      * @return array{client_email: string, private_key: string}|null
      */
     public function serviceAccount(): ?array
+    {
+        $fields = $this->serviceAccountFields();
+
+        return $fields !== null && self::usableRsaKey($fields['private_key']) ? $fields : null;
+    }
+
+    /**
+     * The key file's `client_email` and `private_key` fields, when present and non-empty: the JSON shape only, the key unchecked.
+     *
+     * @return array{client_email: string, private_key: string}|null
+     */
+    private function serviceAccountFields(): ?array
     {
         $path = $this->credentialsPath();
 
@@ -88,11 +104,26 @@ final class Ga4Config
         $json = json_decode((string) file_get_contents($path), true);
 
         if (! is_array($json) || ! is_string($json['client_email'] ?? null) || ! is_string($json['private_key'] ?? null)
-            || $json['client_email'] === '' || ! str_contains($json['private_key'], 'PRIVATE KEY')) {
+            || $json['client_email'] === '' || $json['private_key'] === '') {
             return null;
         }
 
         return ['client_email' => $json['client_email'], 'private_key' => $json['private_key']];
+    }
+
+    /** Does `$pem` load as an RSA private key of at least 2048 bits that can sign RS256? openssl's error text is discarded, unread. */
+    private static function usableRsaKey(string $pem): bool
+    {
+        $key = @openssl_pkey_get_private($pem);
+        $details = $key === false ? false : openssl_pkey_get_details($key);
+        $usable = is_array($details) && ($details['type'] ?? null) === OPENSSL_KEYTYPE_RSA && ($details['bits'] ?? 0) >= 2048
+            && @openssl_sign('ga4-key-probe', $signature, $key, OPENSSL_ALGO_SHA256) === true;
+
+        while (openssl_error_string() !== false) {
+            // drain openssl's error queue so no later message can quote it
+        }
+
+        return $usable;
     }
 
     public function dataUrl(): string

@@ -55,7 +55,7 @@ final class Ga4TrafficSource implements TrafficSource
 
         $data = new Ga4DataConnector($this->config->dataUrl(), $this->accessToken());
         $property = (string) $this->config->propertyId();
-        $range = [['startDate' => $period->days.'daysAgo', 'endDate' => 'today']];
+        $range = [self::window($period)];
 
         $totals = $this->report($data, $property, [
             'dateRanges' => $range,
@@ -132,6 +132,21 @@ final class Ga4TrafficSource implements TrafficSource
             in_array($status, [401, 403], true) || in_array($reason, ['UNAUTHENTICATED', 'PERMISSION_DENIED'], true) => Ga4ReadFailed::auth($status, $step),
             default => Ga4ReadFailed::request($status, $step),
         };
+    }
+
+    /**
+     * The report window: EXACTLY `$period->days` dates. The Data API's DateRange is inclusive at BOTH ends, so "Last 7 days" is
+     * `6daysAgo..today`, seven dates. The window ENDS TODAY because that is what laravel-beam-analytics' period means: a reading
+     * measured now, labelled "<measured at> · Last N days", covers the N days up to that moment, today included (08's fixtures
+     * and trend run through today). One window serves all three reports, so they always agree.
+     *
+     * @return array{startDate: string, endDate: string}
+     */
+    public static function window(AnalyticsPeriod $period): array
+    {
+        $back = $period->days - 1;
+
+        return ['startDate' => $back === 0 ? 'today' : $back.'daysAgo', 'endDate' => 'today'];
     }
 
     /** @return array<string, mixed> a top-N report over one dimension, by one metric, most first */

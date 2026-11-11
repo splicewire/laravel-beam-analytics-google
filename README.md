@@ -38,7 +38,7 @@ php artisan vendor:publish --tag=beam-analytics-google-config
    Keep the key file outside the web root. It is read only to sign a token request. It is never logged, reported or shown.
 5. **Run a queue worker.** Traffic is read by laravel-beam-analytics' refresh job, never on a reader's request.
 6. **Check it.** Run `php artisan splicewire:beam:doctor`. It reports **Google Analytics property** as pass, or as warn with what to fix.
-   It never prints the key.
+   It never prints the key. A key file whose private key does not load as an RSA key that can sign is a WARN, not a pass.
 
 Traffic then reads "Not measured yet" until the first refresh lands, then the install's numbers.
 
@@ -51,8 +51,9 @@ Traffic then reads "Not measured yet" until the first refresh lands, then the in
 - **Honest failures.** A refused credential, an exhausted quota or any other failure is reported, and the reader keeps
   laravel-beam-analytics' honest state. That state is "Couldn't be measured" with no earlier reading, or the last good numbers marked failed.
   An empty report is a measured zero. A failure's message names its kind and HTTP status only, never a credential.
-- **Each period is its own report.** The period comes from the Traffic page's period facet (7, 28 or 90 days), and the
-  overview reads 28.
+- **Each period is its own report, EXACTLY N days.** The period comes from the Traffic page's period facet (7, 28 or 90 days),
+  and the overview reads 28. GA4's DateRange is inclusive at both ends, so "Last 7 days" asks for `6daysAgo..today`: seven
+  dates ending TODAY, which is what laravel-beam-analytics' "measured at · Last N days" means.
 
 ## Registries
 

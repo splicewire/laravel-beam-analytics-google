@@ -4,7 +4,10 @@
 
 use Rushing\Doctor\DoctorStatus;
 use Rushing\Doctor\Finding;
+use Splicewire\Beam\Analytics\Scope\AnalyticsScope;
 use Splicewire\Beam\AnalyticsGoogle\Doctor\Ga4ConfigAudit;
+use Splicewire\Beam\AnalyticsGoogle\Ga4\Ga4Config;
+use Splicewire\Beam\AnalyticsGoogle\Ga4TrafficSource;
 use Splicewire\Beam\AnalyticsGoogle\Tests\Support\Ga4Fixture;
 
 function auditOnce(): Finding
@@ -53,4 +56,40 @@ it('is registered with beam\'s doctor manifest, advisory', function () {
     $ours = array_values(array_filter($manifest->registrations(), fn ($r): bool => $r->audit === Ga4ConfigAudit::class));
 
     expect($ours)->toHaveCount(1)->and($ours[0]->package)->toBe('splicewire/laravel-beam-analytics-google')->and($ours[0]->gate)->toBeFalse();
+});
+
+/** Write a GENERATED service account JSON key file with `$privateKey` as its private_key, and configure it. */
+function configureKey(string $privateKey): string
+{
+    $file = tempnam(sys_get_temp_dir(), 'aa14-key-').'.json';
+    file_put_contents($file, json_encode(['client_email' => Ga4Fixture::CLIENT_EMAIL, 'private_key' => $privateKey], JSON_UNESCAPED_SLASHES));
+    config(['beam.analytics-google.property_id' => Ga4Fixture::PROPERTY, 'beam.analytics-google.credentials' => $file]);
+
+    return $file;
+}
+
+it('warns on a malformed private key that only carries the PEM marker, and quotes none of it (14 AMEND 1)', function () {
+    $garbage = 'MALFORMED-'.bin2hex(random_bytes(12));
+    $file = configureKey("-----BEGIN PRIVATE KEY-----\n{$garbage}\n-----END PRIVATE KEY-----\n");
+
+    $finding = auditOnce();
+
+    expect($finding->status)->toBe(DoctorStatus::Warn)
+        ->and($finding->detail)->toContain('not a usable RSA key')
+        ->and($finding->detail)->not->toContain($garbage)->not->toContain('PRIVATE KEY')->not->toContain($file)->not->toContain(Ga4Fixture::CLIENT_EMAIL)
+        ->and(app(Ga4Config::class)->isConfigured())->toBeFalse()
+        ->and(app(Ga4TrafficSource::class)->covers(AnalyticsScope::install()))->toBeFalse('a bad key is not configured, so Traffic reads Not connected');
+});
+
+it('warns on a well-formed key that is not RSA, which cannot sign RS256 (14 AMEND 1)', function () {
+    $ec = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+    openssl_pkey_export($ec, $pem);
+    configureKey($pem);
+
+    $finding = auditOnce();
+
+    expect($finding->status)->toBe(DoctorStatus::Warn)
+        ->and($finding->detail)->toContain('not a usable RSA key')
+        ->and($finding->detail)->not->toContain(substr($pem, 40, 40))
+        ->and(app(Ga4Config::class)->isConfigured())->toBeFalse();
 });
