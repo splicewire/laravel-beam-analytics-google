@@ -131,6 +131,10 @@
         {
             "type": "git",
             "url": "https://github.com/splicewire/laravel-beam-analytics.git"
+        },
+        {
+            "type": "git",
+            "url": "https://github.com/stephenr85/php-graphine.git"
         }
     ],
     "minimum-stability": "dev",
